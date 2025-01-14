@@ -1,0 +1,23 @@
+{
+  "name": "broad-view-web-scraping",
+  "version": "1.0.0",
+  "description": "Web scraping module for the Broad View AI-Assisted Website Service Analytics project.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Kroymande/broad-view-web-scraping.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Kroymande/broad-view-web-scraping/issues"
+  },
+  "homepage": "https://github.com/Kroymande/broad-view-web-scraping#readme",
+  "dependencies": {
+    "puppeteer": "^24.0.0"
+  }
+}
