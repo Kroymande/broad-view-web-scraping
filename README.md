@@ -20,8 +20,6 @@ Broad View is a scalable and secure web application designed to automate the mon
 
 ## Installation and Setup
 1. **Clone the Repository**:
-
-(Make sure you change your-username with your actual username!)
    ```bash
-   git clone https://github.com/your-username/broad-view-web-scraping.git
+   git clone https://github.com/Kroymande/broad-view-web-scraping.git
    cd broad-view-web-scraping
