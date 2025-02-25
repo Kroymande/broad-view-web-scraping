@@ -1,18 +1,24 @@
-const { spawn } = require('child_process'); // Used to execute main.js
-const assert = require('assert'); // Assertion library for validation
-const fs = require('fs'); // File system module for checking screenshots
+const { spawn } = require('child_process');
+const assert = require('assert');
+const fs = require('fs');
 
-// Function to run the scraper and capture output
 function runScraper(url, callback) {
-    const process = spawn('node', ['main.js', url]); // Execute main.js with the URL
+    if (!fs.existsSync('main.js')) {
+        return callback(1, '', 'main.js does not exist or is not executable');
+    }
+    const child = spawn('node', ['main.js', url]); // Execute main.js with the URL
+
+    child.on('error', (err) => {
+        callback(1, '', `Failed to start process: ${err.message}`);
+    });
 
     let output = '';
     let errorOutput = '';
 
-    process.stdout.on('data', (data) => (output += data.toString()));
-    process.stderr.on('data', (data) => (errorOutput += data.toString()));
+    child.stdout.on('data', (data) => (output += data.toString()));
+    child.stderr.on('data', (data) => (errorOutput += data.toString()));
 
-    process.on('close', (code) => callback(code, output, errorOutput));
+    child.on('close', (code) => callback(code, output, errorOutput));
 }
 
 // Test URLs covering different edge cases
@@ -21,7 +27,7 @@ const testUrls = [
     { url: 'https://example.com', name: 'Minimal Content' },
     { url: 'https://httpstat.us/404', name: 'Fake/404 Page' },
     { url: 'https://httpstat.us/500', name: 'Server Error' },
-    { url: 'https://www.nytimes.com', name: 'Dynamic Content' }
+    { url: 'https://www.bbc.com/news', name: 'Dynamic Content' }
 ];
 
 describe('Web Scraper Validation Tests', function () {
@@ -51,39 +57,58 @@ describe('Web Scraper Validation Tests', function () {
                 console.log(`✅ Extracted meta description: ${metaMatch[1]}`);
             });
 
-            it('Should find and process links correctly', () => {
-                const linkCountMatch = scraperOutput.match(/Found (\d+) links/);
-                assert(linkCountMatch, `Number of links should be logged from ${url}`);
-                const linkCount = parseInt(linkCountMatch[1], 10);
-                assert(linkCount >= 0, `At least 0 links should be found from ${url}, got ${linkCount}`);
-                console.log(`✅ Found ${linkCount} links`);
+            it('Should extract canonical tag and robots meta data', () => {
+                const canonicalMatch = scraperOutput.match(/Canonical Tag:\s(.+)/);
+                assert(canonicalMatch, `Canonical tag should be extracted from ${url}`);
+                console.log(`✅ Canonical tag detected: ${canonicalMatch[1]}`);
+
+                const robotsMatch = scraperOutput.match(/Robots Meta:\s(.+)/);
+                assert(robotsMatch, `Robots meta tag should be extracted from ${url}`);
+                console.log(`✅ Robots meta tag detected: ${robotsMatch[1]}`);
             });
 
-            it('Should confirm batch processing is used', () => {
-                const linkCountMatch = scraperOutput.match(/Found (\d+) links/);
-                assert(linkCountMatch, `Should log number of links found on ${url}`);
-                const linkCount = parseInt(linkCountMatch[1], 10);
-            
+            it('Should detect and log headers', () => {
+                const headersMatch = scraperOutput.match(/Headers Found:\s(.+)/);
+                assert(headersMatch, `Headers should be extracted from ${url}`);
+                console.log(`✅ Headers detected: ${headersMatch[1]}`);
+            });
+
+            it('Should handle popups and overlays', () => {
+                assert(scraperOutput.includes("Popup handled successfully.") || scraperOutput.includes("No popups detected."),
+                    `Popup handling should be confirmed for ${url}`);
+                console.log(`✅ Popup handling validated.`);
+            });
+
+            it('Should confirm batch processing occurs', () => {
                 const batchMatch = scraperOutput.match(/Total batches used: (\d+)/);
-                if (linkCount === 0) {
-                    console.log(`ℹ No links found on ${url}, skipping batch check (Expected behavior)`);
+                assert(batchMatch, `Batch processing count should be logged for ${url}`);
+                console.log(`✅ Confirmed ${batchMatch[1]} batches used.`);
+            });
+
+            it('Should verify retry mechanism on dead links', () => {
+                const retryMatch = scraperOutput.match(/Attempt (\d+) to access/g);
+                const retryCount = retryMatch ? retryMatch.length : 0;
+            
+                // Skip retry test for known error pages where no failed link attempts are expected.
+                if (url.includes("httpstat.us/404") || url.includes("httpstat.us/500")) {
+                    console.log(`ℹ Skipping retry mechanism test for ${url} because no failed link attempts are expected.`);
+                    return;  // Skip this test for error pages
+                }
+                
+                // Otherwise, assert retries occurred
+                assert(retryCount > 0, `At least one retry attempt should be logged for failed links.`);
+                console.log(`✅ Retry mechanism confirmed with ${retryCount} attempts.`);
+            });
+
+            it('Should validate extracted dynamic content', () => {
+                if (scraperOutput.includes('No meaningful dynamic content found.')) {
+                    console.log(`ℹ No dynamic content found on ${url}, skipping test (Expected behavior).`);
                 } else {
-                    assert(batchMatch, `Batch processing count should be logged for ${url}`);
-                    const batchCount = parseInt(batchMatch[1], 10);
-                    assert(batchCount > 0, `Batch processing should be applied for ${url}`);
-                    console.log(`✅ Confirmed ${batchCount} batches used for ${url}`);
+                    const dynamicMatch = scraperOutput.match(/Dynamic Content Extracted \((\d+) sections\):/);
+                    assert(dynamicMatch, `Dynamic content should be detected if present on ${url}`);
+                    console.log(`✅ ${dynamicMatch[1]} dynamic content sections extracted.`);
                 }
             });
-            
-            it('Should validate dynamic content extraction', () => {
-                if (scraperOutput.includes('No dynamic content found.')) {
-                    console.log(`ℹ No dynamic content found on ${url}, skipping test (Expected behavior)`);
-                } else {
-                    const dynamicMatch = scraperOutput.match(/Dynamic Content Found:\s(.+)/);
-                    assert(dynamicMatch, `Dynamic content should be detected if present on ${url}`);
-                    console.log(`✅ Dynamic content detected: ${dynamicMatch[1]}`);
-                }
-            });            
 
             it('Should verify screenshot is saved', () => {
                 const screenshotMatch = scraperOutput.match(/Screenshot saved at:\s(.+)/);
