@@ -2,31 +2,6 @@
 const puppeteer = require('puppeteer'); // Web scraping and automation library
 const os = require('os'); // Provides information about the operating system
 const path = require('path'); // Handles file paths
-const fs = require('fs'); // File system module for logging errors
-
-let loggedErrors = new Set(); // Ensure loggedErrors is initialized before use
-
-// Function to log errors to error_log.txt
-/**
- * Logs an error message to error_log.txt.
- * @param {string} errorMessage - The error message to log.
- * @param {string} [link=''] - The link associated with the error (optional).
- * @param {number} [retries=0] - The number of retries attempted (optional).
- */
-function logErrorToFile(errorMessage, link = '', retries = 0) {
-    const logFilePath = 'error_log.txt';
-    const logEntry = `[${new Date().toISOString()}] [ERROR] ${errorMessage} | Link: ${link} | Retries: ${retries}\n`;
-    fs.appendFileSync(logFilePath, logEntry, 'utf8');
-    console.log(`Error logged to ${logFilePath}`);
-}
-
-// Function to log warnings to warning_log.txt
-function logWarningToFile(warningMessage, link = '', retries = 0) {
-    const warningFilePath = 'warning_log.txt';
-    const logEntry = `[${new Date().toISOString()}] [WARNING] ${warningMessage} | Link: ${link} | Retries: ${retries}\n`;
-    fs.appendFileSync(warningFilePath, logEntry, 'utf8');
-    console.log(`Warning logged to ${warningFilePath}`);
-}
 
 // Function to determine the batch size based on available system resources and CPU load
 function determineBatchSize() {
@@ -60,7 +35,7 @@ pauses the execution of the function until the Promise is resolved.
 // Function to handle popups, cookie banners, and modal overlays
 async function handlePopups(page) {
     try {
-        if (!page || typeof page.evaluate !== 'function') {
+        if (!page || typeof page.evaluate !== 'function') { 
             throw new Error("Invalid Puppeteer page instance.");
         }
 
@@ -85,9 +60,9 @@ async function handlePopups(page) {
             }
 
             // Attempt to click pop-up buttons
-            clicked = clickFirstMatchingButton("accept") ||
-                clickFirstMatchingButton("close") ||
-                clickFirstMatchingButton("ok");
+            clicked = clickFirstMatchingButton("accept") || 
+                      clickFirstMatchingButton("close") || 
+                      clickFirstMatchingButton("ok");
 
             // Remove modal popups (e.g., paywalls, cookie banners)
             const modalElements = document.querySelectorAll('.paywall, .cookie-consent, .popup-modal, div[role="dialog"]');
@@ -96,47 +71,25 @@ async function handlePopups(page) {
             return clicked;
         });
 
-        console.log(popupHandled ? "Popup handled successfully." : "No popups detected.");
+        console.log(popupHandled ? "✅ Popup handled successfully." : "ℹ️ No popups detected.");
     } catch (error) {
-        logWarningToFile(`Popup handling failed: ${error.message}`);
+        console.warn("⚠️" + " Popup handling failed:", error.message);
     }
 }
 
-// Function to scrape website data with enhanced SEO extraction
+// Function to scrape website data
 async function scrapeWebsite(url) {
     try {
         const startTime = Date.now(); // Start measuring processing time
-        const batchSize = determineBatchSize(); // Determine batch size based on system resources
         
         // Launch Puppeteer in headless mode (no visible UI)
         const browser = await puppeteer.launch({ headless: true });
         const page = await browser.newPage();
 
-        // Additional headers to bypass caching and conditional requests
-        await page.setCacheEnabled(false);
-        await page.setExtraHTTPHeaders({
-            'Cache-Control': 'no-cache, no-store, must-revalidate',
-            'Pragma': 'no-cache',
-            'Expires': '0',
-            'If-None-Match': '', // ETag bypass
-            'If-Modified-Since': '' // Prevent conditional GET
-        });
-
-        // Prevent ETag-based conditional requests
-        await page.setRequestInterception(true);
-        page.on('request', (req) => {
-            const headers = req.headers();
-            headers['If-None-Match'] = '';
-            headers['If-Modified-Since'] = '';
-            req.continue({ headers });
-        });
-
-        const userAgents = [
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Firefox/110.0',
-            'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Edge/120.0.0.0'
-        ];
-        await page.setUserAgent(userAgents[Math.floor(Math.random() * userAgents.length)]);        
+        // Set user-agent to mimic a real browser
+        await page.setUserAgent(
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        );
         
         // Set a timeout to prevent long waits
         await page.setDefaultNavigationTimeout(60000);
@@ -146,195 +99,91 @@ async function scrapeWebsite(url) {
         await handlePopups(page); // Handle potential popups before proceeding
 
         // Extract title, meta description, and links, ensuring they are sorted alphabetically
-        const seoData = await page.evaluate(() => {
-            return {
-                title: document.title || "No title found",
-                metaDescription: document.querySelector('meta[name="description"]')?.content || "No meta description found",
-                canonical: document.querySelector('link[rel="canonical"]')?.href || "No canonical tag found",
-                robotsMeta: document.querySelector('meta[name="robots"]')?.content || "No robots meta tag found",
-                headers: Array.from(document.querySelectorAll('h1, h2, h3')).map(h => h.textContent.trim()),
-                links: Array.from(document.querySelectorAll('a[href]'))
-                    .map(a => a.href)
-                    .sort((a, b) => a.localeCompare(b)), // Sorting links alphabetically
-            };
+        const { title, metaDescription, links } = await page.evaluate(() => {
+            const title = document.title || "No title found";
+            const metaDescription = document.querySelector('meta[name="description"]')?.content || "No meta description found";
+            const links = Array.from(document.querySelectorAll('a[href]'))
+                .map(a => a.href)
+                .sort((a, b) => a.localeCompare(b)); // Sorting alphabetically
+            return { title, metaDescription, links };
         });
 
-        console.log("\nExtracted SEO Metadata:");
-        console.log(`Title: ${seoData.title}`);
-        console.log(`Meta Description: ${seoData.metaDescription}`);
-        console.log(`Canonical Tag: ${seoData.canonical}`);
-        console.log(`Robots Meta: ${seoData.robotsMeta}`);
-        console.log(`Headers Found: ${seoData.headers.length > 0 ? seoData.headers.join(" | ") : "No headers found"}`);
-        console.log(`Found ${seoData.links.length} links (sorted alphabetically).`);
+        console.log("Scraped Data:");
+        console.log(`Title: ${title}`);
+        console.log(`Meta Description: ${metaDescription}`);
 
-        // Extract meaningful dynamic content
         const dynamicContent = await page.evaluate(() => {
             const selectors = [
-                '.main-content', '.article-content', '.news-article', '.post-content', // Common article containers
-                '.live-update', '.breaking-news', '.headline', '.story-body', // News & updates
-                '.summary', '.content-block', '[data-live]', // Other dynamic elements
-                'article', 'section' // General content holders (filtered)
+                '.dynamic-content', '.live-update', '.breaking-news', '.update', 
+                '.story-body', '.headline', '.summary', '.content-block', 
+                'article', 'section', '[data-live]'
             ];
-
-            // Get all elements from the defined selectors
-            let elements = selectors.flatMap(selector =>
+            const elements = selectors.flatMap(selector =>
                 Array.from(document.querySelectorAll(selector))
             );
-
-            // Extract and clean text
-            let extractedText = elements
-                .map(el => el.textContent.trim())
-                .filter(text => text.length > 20); // Ignore very short text (prevents junk data)
-
-            // Remove duplicate content
-            extractedText = [...new Set(extractedText)];
-
-            return extractedText;
+            return elements.map(el => el.textContent.trim()).filter(text => text.length > 0);
         });
 
-        // Check and display extracted dynamic content
         if (dynamicContent.length > 0) {
-            console.log(`Dynamic Content Extracted (${dynamicContent.length} sections):`);
-            dynamicContent.forEach((text, index) => {
-                console.log(`${index + 1}. ${text.substring(0, 150)}...`); // Show preview (first 150 chars)
-            });
+            console.log(`🔹 Dynamic Content Found: ${JSON.stringify(dynamicContent)}`);
         } else {
-            console.log("No meaningful dynamic content found.");
+            console.log("ℹ No dynamic content found.");
         }
 
+        console.log(`Found ${links.length} links. Processing...`);
 
-        console.log(`Found ${seoData.links.length} links (sorted alphabetically). Processing...`);
-
-        const MAX_CONCURRENT_PAGES = 5; // Number of pages to use in parallel
+        // Determine the optimal batch size based on system resources
+        const batchSize = determineBatchSize();
         let batchCount = 0;
         let linkStatuses = [];
 
-        // Create a pool of Puppeteer pages
-        const pagePool = await Promise.all(
-            Array.from({ length: MAX_CONCURRENT_PAGES }, () => browser.newPage())
-        );
-
-        // Function to process a batch of links
-        async function processBatch(batch) {
-            return await Promise.all(batch.map(async (link, index) => {
-                const page = pagePool[index % MAX_CONCURRENT_PAGES]; // Assign page from pool
-                return await checkLinkStatus(link, page);
-            }));
-        }
-
-        // Function to check the status of a link using retries and page pool
-        async function checkLinkStatus(link, page, retryCount = 3) {
-            let lastError = "";
-            // Track attempts for logging
-            let attemptLog = [];
-
-            for (let attempt = 0; attempt < retryCount; attempt++) {
-                try {
-                    console.log(`Attempt ${attempt + 1} to access ${link}...`); // Log each attempt
-                    attemptLog.push(`Attempt ${attempt + 1} to access ${link}`);
-                    // Prevent race conditions
-                    await new Promise(res => setTimeout(res, Math.random() * 3000)); // Random delay (0-3 sec)
-
-                    const response = await page.goto(link, { waitUntil: 'domcontentloaded', timeout: 15000 });
-
-                    if (response) {
-                        const status = response.status();
-                        const finalUrl = page.url(); // Capture final URL after redirects
-                        console.log(`Response status for ${link} (Final URL: ${finalUrl}): ${status}`);
-        
-                        // Handle HTTP 304 as a warning
-                        if (status === 304) {
-                            logWarningToFile(`HTTP ${status} detected at ${finalUrl}.`, link, attempt + 1);
-                            return { link, status, isDead: false, retries: attemptLog };
-                        } else if (status !== 200) {
-                            throw new Error(`HTTP ${status} detected at ${finalUrl}.`);
-                        }
-        
-                        return { link, status, isDead: false, retries: attemptLog };
-                    }
-                } catch (error) {
-                    lastError = error.message;
-                    // Check case-insensitively for "aborted" in the error message
-                    if (error.message.toLowerCase().includes('aborted')) {
-                        console.warn(`ERR_ABORTED detected for ${link}. Retrying attempt ${attempt + 1} of ${retryCount}...`);
-                        if (attempt === retryCount - 1) {
-                            logWarningToFile(`Final ERR_ABORTED for ${link} after ${retryCount} attempts.`, link, attempt + 1);
-                        }
-                        continue;  // Retry without excessive logging
-                    }
-                
-                    console.warn(`Failed attempt ${attempt + 1} for ${link}: ${error.message}`);
-                    if (attempt === retryCount - 1 && !loggedErrors.has(link)) {
-                        const errorMsg = `Failed to access ${link} after ${retryCount} attempts: ${lastError}`;
-                        // If error message includes "aborted" or "HTTP 304", log as warning
-                        if (lastError.toLowerCase().includes('aborted') || lastError.includes('HTTP 304')) {
-                            logWarningToFile(errorMsg, link, attempt + 1);
-                        } else {
-                            logErrorToFile(errorMsg, link, attempt + 1);
-                        }
-                        loggedErrors.add(link);
-                    }
-                }
-
-                await new Promise(res => setTimeout(res, 2000));  // 2-second fixed delay
-            }
-
-            console.warn(`Failed to access ${link} after ${retryCount} attempts.`);
-
-            return {
-                link,
-                status: lastError.toLowerCase().includes('aborted') ? 'Aborted (Final)' :
-                        lastError.includes('HTTP 304') ? 'Not Modified (304)' :
-                        `Error - ${lastError}`,
-                isDead: true,
-                retries: attemptLog
-            };
-        }
-
-        // Process links in batches
-        if (seoData.links.length === 0) {
-            console.warn(`No links found on ${url}. Skipping link checks.`);
-        } else {
-            for (let i = 0; i < seoData.links.length; i += batchSize) {
-                batchCount++;
-                const batch = seoData.links.slice(i, i + batchSize);
-                console.log(`Processing batch ${batchCount} of ${Math.ceil(seoData.links.length / batchSize)}...`);
-                console.log(`Links in this batch:`, batch);
-
-                const batchResults = await processBatch(batch);
-                linkStatuses.push(...batchResults);
+        // Function to check the status of a link
+        async function checkLinkStatus(link) {
+            try {
+                const linkPage = await browser.newPage();
+                const response = await linkPage.goto(link, { waitUntil: 'domcontentloaded' });
+                const status = response.status();
+                await linkPage.close();
+                return { link, status, isDead: status >= 400 };
+            } catch {
+                return { link, status: 'Error', isDead: true };
             }
         }
+
+        for (let i = 0; i < links.length; i += batchSize) {
+            batchCount++;
+            const batch = links.slice(i, i + batchSize);
+            console.log(`🔄 Processing batch ${batchCount} of ${Math.ceil(links.length / batchSize)}...`);
+            console.log(`🔹 Links in this batch:`, batch);
+            const batchResults = await Promise.all(batch.map(checkLinkStatus));
+            linkStatuses.push(...batchResults);
+        }
+
+        console.log(`✅ Total batches used: ${batchCount}`);
+        
         // Extract the hostname to save a screenshot
         const hostname = new URL(url).hostname.replace(/\./g, '-');
         const screenshotPath = path.join(__dirname, `screenshot-${hostname}.png`);
 
         await page.screenshot({ path: screenshotPath });
-        console.log(`Screenshot saved at: ${screenshotPath}`);
-
-        // Close all pages in the pool after processing
-        for (const page of pagePool) {
-            await page.close();
-        }
-
-        console.log(`Total batches used: ${batchCount}`);
+        console.log(`📸 Screenshot saved at: ${screenshotPath}`);
         
         const endTime = Date.now();
-        console.log(`Scraping completed in ${(endTime - startTime) / 1000} seconds.`);
+        console.log(`✅ Scraping completed in ${(endTime - startTime) / 1000} seconds.`);
         
-        console.log("Link list sorted for review:");
+        console.log("🔹 Link list sorted for review:");
         linkStatuses.sort((a, b) => a.link.localeCompare(b.link)).forEach((item, index) => {
             console.log(`${index + 1}. ${item.link} - Status: ${item.status} - ${item.isDead ? 'Dead' : 'Alive'}`);
         });
         
         await browser.close();
     } catch (error) {
-        // Critical error - log to error_log.txt
-        logErrorToFile(`An error occurred while scraping ${url}: ${error.message}`, url);
+        console.error(`An error occurred while scraping ${url}:`, error);
     }
 }
 
 // Allow dynamic URL input from command line, defaulting to Wikipedia
 const url = process.argv[2] || 'https://www.wikipedia.org';
+
 // Start scraping
 scrapeWebsite(url);
