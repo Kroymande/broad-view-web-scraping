@@ -19,6 +19,7 @@
   },
   "homepage": "https://github.com/Kroymande/broad-view-web-scraping#readme",
   "dependencies": {
+    "express": "^4.21.2",
     "mongodb": "^5.0.0",
     "puppeteer": "^24.0.0"
   },
