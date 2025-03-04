@@ -1,4 +1,3 @@
-// main.js - Web Scraper
 const puppeteer = require('puppeteer');
 const os = require('os');
 const path = require('path');
@@ -110,35 +109,192 @@ async function handlePopups(page, db) {
     }
 }
 
-// Check link status and collect dead links only
+async function autoScroll(page) {
+    try {
+        await page.evaluate(async () => {
+            await new Promise((resolve) => {
+                let totalHeight = 0;
+                const distance = 200;
+                const timer = setInterval(() => {
+                    window.scrollBy(0, distance);
+                    totalHeight += distance;
+
+                    if (totalHeight >= document.body.scrollHeight) {
+                        clearInterval(timer);
+                        resolve();
+                    }
+                }, 100);
+            });
+        });
+    } catch (error) {
+        console.warn(`[WARN] autoScroll failed due to page navigation: ${error.message}`);
+    }
+}
+
+// Detect if the page requires login and determine if it's forced
+async function isLoginScreen(page) {
+    return await page.evaluate(() => {
+        const passwordFields = document.querySelectorAll('input[type="password"]').length > 0;
+        const loginKeywords = ['login', 'sign in', 'authenticate', 'log in'];
+        const textContent = document.body.innerText.toLowerCase();
+
+        // Detect login elements
+        const hasLoginElements = passwordFields || loginKeywords.some(keyword => textContent.includes(keyword));
+
+        // Detect if most content is hidden (e.g., blurred, display: none)
+        const hiddenElements = document.querySelectorAll('[style*="display: none"], [style*="visibility: hidden"], [style*="opacity: 0"]');
+        const isContentHidden = hiddenElements.length > 15; // Adjusted threshold
+
+        // Ensure key content is missing
+        const mainContent = document.querySelector('main, article, section');
+        const visibleHeadlines = document.querySelectorAll('h1, h2, h3, p, img').length > 5;
+
+        // Detect if the page redirects to a login page
+        const currentUrl = window.location.href.toLowerCase();
+        const loginPaths = ['/login', '/signin', '/auth', '/account/signin'];
+        const isRedirectedToLogin = loginPaths.some(path => currentUrl.includes(path));
+
+        return {
+            hasLoginElements,
+            isContentHidden,
+            isRedirectedToLogin,
+            forcedLogin: hasLoginElements && isContentHidden && !mainContent && !visibleHeadlines
+        };
+    });
+}
+
+// Categorize HTTP status codes
+function categorizeStatusCode(status) {
+    if (status >= 200 && status < 300) return 'valid';
+    if (status >= 300 && status < 400) return 'redirect';
+    if (status >= 400 && status < 500) return 'client_error';
+    if (status >= 500) return 'server_error';
+    return 'unknown';
+}
+
+async function checkLinksParallel(links, browser, db) {
+    const MAX_CONCURRENT_TABS = Math.max(2, Math.floor(os.cpus().length / 2));  // Adjust based on CPU power
+    const linkStatuses = [];
+    const linkChunks = [];
+    const linksCopy = [...links];  // Prevent modifying original links array
+
+    while (linksCopy.length) linkChunks.push(linksCopy.splice(0, MAX_CONCURRENT_TABS));
+
+    for (const chunk of linkChunks) {
+        const pages = [];
+        for (let i = 0; i < chunk.length; i++) {
+            pages.push(await browser.newPage());
+            await new Promise(resolve => setTimeout(resolve, 500)); // Slow down tab creation
+        }
+
+        const tasks = chunk.map(async (link, index) => {
+            try {
+                const result = await checkLinkStatus(link, pages[index], db);
+                return result;
+            } finally {
+                await pages[index].close();  // Close the page after check
+            }
+        });
+
+        const results = await Promise.all(tasks);  // Process links in parallel
+        linkStatuses.push(...results.filter(res => res));  // Collect dead links
+    }
+
+    return linkStatuses;
+}
+
+const knownLoginSites = [
+    "facebook.com", "twitter.com", "linkedin.com", "instagram.com",
+    "youtube.com", "threads.net", "mstdn.social", "bsky.app", "guce.techcrunch.com",
+    "oidc.techcrunch.com", "legal.yahoo.com"
+];
+
+// Check link status, detect login screens, and collect non-alive links only
 async function checkLinkStatus(link, page, db, retryCount = 3) {
     for (let attempt = 0; attempt < retryCount; attempt++) {
         try {
+            console.log(`[DEBUG] Attempt ${attempt + 1} to access ${link}`);
             const response = await page.goto(link, { waitUntil: 'domcontentloaded', timeout: 15000 });
-            if (response && response.status() === 200) {
-                return null;  // Link is alive, no need to store
+
+            if (response) {
+                const status = response.status();
+                const category = categorizeStatusCode(status);
+                console.log(`[INFO] Categorized ${link}: Status ${status}, Category ${category}`);
+
+                // Check if navigation occurs before evaluating login
+                try {
+                    await page.waitForNavigation({ timeout: 3000 }); // Reduce timeout
+                    console.warn(`[INFO] Navigation detected at ${link}, delaying evaluation.`);
+                } catch (navError) {
+                    console.log(`[INFO] No navigation detected at ${link}, continuing.`);
+                }
+
+                // Ignore known login-required external sites
+                if (knownLoginSites.some(domain => link.includes(domain))) {
+                    console.warn(`[INFO] Skipping known login-restricted external site: ${link}`);
+                    return null;
+                }
+
+                // Check for forced login only if navigation didn't happen
+                const loginCheck = await isLoginScreen(page);
+
+                if (loginCheck.forcedLogin) {
+                    console.warn(`[WARN] Detected forced login at ${link}, categorizing as 'login_required'.`);
+                    return { url: link, status: 403, category: 'login_required' };
+                }
+
+                // Store only non-alive links
+                if (category !== 'valid') {
+                    return { url: link, status, category };
+                }
+
+                return null; // Ignore valid links
             }
         } catch (error) {
+            console.error(`[ERROR] Failed to access ${link} on attempt ${attempt + 1}: ${error.message}`);
+
             if (attempt === retryCount - 1) {
-                console.warn(`Dead link detected: ${link}`);
-                return link;  // Store only dead links
+                console.warn(`[WARN] Dead link detected: ${link}`);
+                return {
+                    url: link,
+                    status: 0,
+                    category: 'dead',
+                    reason: "No response received (Timeout, Unreachable, or Blocked)"
+                };
             }
         }
-        await new Promise(res => setTimeout(res, 2000));  // Retry delay
+
+        await new Promise(res => setTimeout(res, 2000)); // Retry delay
     }
-    return null;
+
+    console.warn(`[WARN] Could not determine status for ${link}, marking as unknown.`);
+    return {
+        url: link,
+        status: 0,
+        category: 'unknown',
+        reason: "No response received, unable to classify"
+    };
 }
 
 // Main scraping function integrated with MongoDB
 async function scrapeWebsite(url) {
     const { db, client } = await connectToDb();
-    let linkStatuses = [];  // Collect dead links
 
     try {
         const startTime = Date.now();
-        const batchSize = determineBatchSize();
+        const browser = await puppeteer.launch({
+            headless: true,
+            args: [
+                '--disable-features=site-per-process',
+                '--disable-background-timer-throttling',
+                '--disable-backgrounding-occluded-windows',
+                '--disable-renderer-backgrounding',
+                '--disable-dev-shm-usage',
+                '--no-sandbox',
+                '--disable-setuid-sandbox'
+            ]
+        });
 
-        const browser = await puppeteer.launch({ headless: true });
         const page = await browser.newPage();
         await page.setCacheEnabled(false);
         await page.setExtraHTTPHeaders({
@@ -149,17 +305,26 @@ async function scrapeWebsite(url) {
             'If-Modified-Since': ''
         });
 
-        const userAgents = [
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Firefox/110.0',
-            'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Edge/120.0.0.0'
-        ];
-        await page.setUserAgent(userAgents[Math.floor(Math.random() * userAgents.length)]);
-        await page.setDefaultNavigationTimeout(60000);
         await page.goto(url, { waitUntil: 'networkidle2' });
+
+        const loginCheck = await isLoginScreen(page);
+        if (loginCheck.forcedLogin) {
+            console.warn(`[WARN] Forced login detected at ${url}. Stopping scraping.`);
+            await db.collection('scan_results').insertOne({
+                url,
+                status: 403,
+                category: 'login_required',
+                reason: "Forced login detected (content hidden or redirect)",
+                timestamp: getCentralTime()
+            });
+
+            await browser.close();
+            await client.close();
+            return;
+        }
+
         await handlePopups(page, db);
 
-        // Extract SEO metadata and links
         const seoData = await page.evaluate(() => {
             const links = Array.from(document.querySelectorAll('a[href]'))
                 .map(a => a.href)
@@ -172,20 +337,14 @@ async function scrapeWebsite(url) {
                 robotsMeta: document.querySelector('meta[name="robots"]')?.content || "No robots meta tag found",
                 headers: Array.from(document.querySelectorAll('h1, h2, h3'))
                     .map(h => h.textContent.trim().replace(/\s+/g, ' ')),
-                totalLinks: links.length,  // Store only the count of links
+                totalLinks: links.length,
                 links: links
             };
         });
 
-        // Check link status and collect dead links
-        for (const link of seoData.links) {
-            const result = await checkLinkStatus(link, page, db);
-            if (result) {
-                linkStatuses.push(result);  // Collect only dead links
-            }
-        }
+        const deadLinks = await checkLinksParallel(seoData.links, browser, db);
 
-        // Save screenshot and generate accessible URL
+        // Save screenshot
         const hostname = new URL(url).hostname.replace(/\./g, '-');
         const screenshotPath = path.join(screenshotDir, `screenshot-${hostname}.png`);
         await page.screenshot({ path: screenshotPath });
@@ -194,6 +353,7 @@ async function scrapeWebsite(url) {
         await browser.close();
 
         const endTime = Date.now();
+
         const resultData = {
             url: url,
             title: seoData.title,
@@ -201,11 +361,11 @@ async function scrapeWebsite(url) {
             canonical: seoData.canonical,
             robotsMeta: seoData.robotsMeta,
             headers: seoData.headers,
-            totalLinks: seoData.totalLinks,  // Store only the count of links
-            deadLinks: linkStatuses,  // Store only dead links
+            totalLinks: seoData.totalLinks,
+            deadLinks: deadLinks,  // Ensure collected data is stored
             screenshotUrl: screenshotUrl,
             scrapeTimeSeconds: (endTime - startTime) / 1000,
-            timestamp: getCentralTime()  // Central Time timestamp
+            timestamp: getCentralTime()
         };
 
         await db.collection('scan_results').insertOne(resultData);
