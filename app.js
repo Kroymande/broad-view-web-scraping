@@ -7,6 +7,15 @@ const app = express();
 const port = 3000;
 const MONGO_URI = 'mongodb+srv://carl6690:wVkZUHvp61PDR9a9@broadviewdb.wcqud.mongodb.net/';
 const DB_NAME = 'WebScarping_Database';
+const cors = require('cors');
+
+app.use(cors({
+    origin: 'http://localhost:5173', // Change this if frontend runs on a different port
+    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    credentials: true
+}));
+
+app.use(express.json()); // Enables JSON body parsing for POST requests
 
 // MongoDB Connection
 async function connectToDb() {
@@ -100,6 +109,25 @@ app.get('/api/health', (req, res) => {
 // Root endpoint for quick testing
 app.get('/', (req, res) => {
     res.send('Broad View - AI-Assisted Website Service Analytics API is running!');
+});
+
+app.post('/scrape', async (req, res) => {
+    const { url } = req.body;
+
+    if (!url) {
+        return res.status(400).json({ error: 'No URL provided' });
+    }
+
+    try {
+        // Call the scraper function from main.js
+        const { scrapeWebsite } = require('./main.js');
+        await scrapeWebsite(url);
+
+        res.json({ message: 'Scraping started successfully!', url });
+    } catch (error) {
+        console.error('Error scraping website:', error.message);
+        res.status(500).json({ error: 'Failed to start scraping' });
+    }
 });
 
 // Start Express server

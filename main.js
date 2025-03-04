@@ -378,4 +378,4 @@ async function scrapeWebsite(url) {
 }
 
 const url = process.argv[2] || 'https://www.wikipedia.org';
-scrapeWebsite(url);
+module.exports = { scrapeWebsite };
