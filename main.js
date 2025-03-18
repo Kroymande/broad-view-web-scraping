@@ -328,6 +328,7 @@ async function scrapeWebsite(url) {
         const seoData = await page.evaluate(() => {
             const links = Array.from(document.querySelectorAll('a[href]'))
                 .map(a => a.href)
+                .filter(href => typeof href === 'string' && href.startsWith('http')) // Ensures valid links
                 .sort((a, b) => a.localeCompare(b));
 
             return {
