@@ -6,7 +6,7 @@ const { MongoClient } = require('mongodb');
 
 // MongoDB connection details
 const MONGO_URI = 'mongodb+srv://carl6690:wVkZUHvp61PDR9a9@broadviewdb.wcqud.mongodb.net/';
-const DB_NAME = 'WebScarping_Database';
+const DB_NAME = 'WebScraping_Database';
 
 // Ensure the 'public/screenshots' directory exists for saving screenshots
 const screenshotDir = path.join(__dirname, 'public/screenshots');

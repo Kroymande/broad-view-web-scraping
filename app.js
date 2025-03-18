@@ -6,7 +6,7 @@ const path = require('path');
 const app = express();
 const port = 3000;
 const MONGO_URI = 'mongodb+srv://carl6690:wVkZUHvp61PDR9a9@broadviewdb.wcqud.mongodb.net/';
-const DB_NAME = 'WebScarping_Database';
+const DB_NAME = 'WebScraping_Database';
 const cors = require('cors');
 
 app.use(cors({
