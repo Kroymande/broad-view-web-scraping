@@ -1,6 +1,7 @@
 // app.js - Express API Server
 const express = require('express');
 const { MongoClient } = require('mongodb');
+const { scrapeWebsite } = require('./main'); // Import the scraping function
 const path = require('path');
 
 const app = express();
@@ -8,6 +9,8 @@ const port = 3000;
 const MONGO_URI = 'mongodb+srv://carl6690:wVkZUHvp61PDR9a9@broadviewdb.wcqud.mongodb.net/';
 const DB_NAME = 'WebScraping_Database';
 const cors = require('cors');
+
+console.log(require('./main'));
 
 app.use(cors({
     origin: 'http://localhost:5173', // Change this if frontend runs on a different port
@@ -21,7 +24,7 @@ app.use(express.json()); // Enables JSON body parsing for POST requests
 async function connectToDb() {
     const client = new MongoClient(MONGO_URI, { useUnifiedTopology: true });
     await client.connect();
-    return client.db(DB_NAME);
+    return { db: client.db(DB_NAME), client };
 }
 
 // Serve static files (screenshots)
@@ -30,7 +33,7 @@ app.use('/screenshots', express.static(path.join(__dirname, 'public/screenshots'
 // API: Get all scan results (with totalLinks and deadLinks)
 app.get('/api/scan-results', async (req, res) => {
     try {
-        const db = await connectToDb();
+        const { db, client } = await connectToDb();
         const results = await db.collection('scan_results').find().toArray();
 
         const formattedResults = results.map(result => ({
@@ -54,7 +57,7 @@ app.get('/api/scan-results', async (req, res) => {
 app.get('/api/scan-results/:url', async (req, res) => {
     const url = req.params.url;
     try {
-        const db = await connectToDb();
+        const { db, client } = await connectToDb();
         const result = await db.collection('scan_results').findOne({ url });
 
         if (result) {
@@ -80,7 +83,7 @@ app.get('/api/scan-results/:url', async (req, res) => {
 // API: Get all users
 app.get('/api/users', async (req, res) => {
     try {
-        const db = await connectToDb();
+        const { db, client } = await connectToDb();
         const users = await db.collection('users').find().toArray();
         res.json(users);
     } catch (error) {
@@ -92,7 +95,7 @@ app.get('/api/users', async (req, res) => {
 // API: Get configurations
 app.get('/api/configurations', async (req, res) => {
     try {
-        const db = await connectToDb();
+        const { db, client } = await connectToDb();
         const configs = await db.collection('configurations').find().toArray();
         res.json(configs);
     } catch (error) {
@@ -111,22 +114,106 @@ app.get('/', (req, res) => {
     res.send('Broad View - AI-Assisted Website Service Analytics API is running!');
 });
 
-app.post('/scrape', async (req, res) => {
-    const { url } = req.body;
+const bcrypt = require('bcrypt'); // Import bcrypt for password hashing
 
-    if (!url) {
-        return res.status(400).json({ error: 'No URL provided' });
-    }
-
+app.post('/signup', async (req, res) => {
+    let client;
     try {
-        // Call the scraper function from main.js
-        const { scrapeWebsite } = require('./main.js');
-        await scrapeWebsite(url);
+        const connection = await connectToDb();
+        client = connection.client;
+        const db = connection.db;
+        const usersCollection = db.collection('users');
 
-        res.json({ message: 'Scraping started successfully!', url });
+        const { name, email, password } = req.body;
+        if (!name || !email || !password) {
+            return res.status(400).json({ error: "All fields are required." });
+        }
+
+        // Validate email format
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email)) {
+            return res.status(400).json({ error: "Invalid email format." });
+        }
+
+        // Check if user already exists
+        const existingUser = await usersCollection.findOne({ email });
+        if (existingUser) {
+            return res.status(400).json({ error: "User already exists." });
+        }
+
+        // Hash password before storing it
+        const saltRounds = 10;
+        const hashedPassword = await bcrypt.hash(password, saltRounds);
+
+        // Insert new user with hashed password
+        const result = await usersCollection.insertOne({ name, email, password: hashedPassword });
+
+        res.status(201).json({
+            message: "User created successfully!",
+            userId: result.insertedId, // Return the MongoDB generated user ID
+        });
+
     } catch (error) {
-        console.error('Error scraping website:', error.message);
-        res.status(500).json({ error: 'Failed to start scraping' });
+        console.error("Signup error:", error);
+        res.status(500).json({ error: "Internal server error." });
+    } finally {
+        if (client && typeof client.close === 'function') {
+            await client.close();
+        }        
+    }
+});
+
+app.post('/login', async (req, res) => {
+    try {
+        const { db, client } = await connectToDb();
+        const usersCollection = db.collection('users');
+
+        const { email, password } = req.body;
+        if (!email || !password) {
+            return res.status(400).json({ error: "Email and password are required." });
+        }
+
+        // Check if the user exists
+        const user = await usersCollection.findOne({ email });
+        if (!user) {
+            return res.status(401).json({ error: "User not found." });
+        }
+
+        // Validate password using bcrypt
+        const isPasswordValid = await bcrypt.compare(password, user.password);
+        if (!isPasswordValid) {
+            return res.status(401).json({ error: "Invalid password." });
+        }
+
+        res.json({ message: "Login successful!", user: { name: user.name, email: user.email } });
+
+    } catch (error) {
+        console.error("Login error:", error);
+        res.status(500).json({ error: "Internal server error." });
+    }
+});
+
+app.post('/scrape', async (req, res) => {
+    try {
+        const { url } = req.body;
+        if (!url) {
+            return res.status(400).json({ error: "URL is required" });
+        }
+
+        console.log(`[INFO] Received scraping request for: ${url}`);
+        
+        const scrapeResult = await scrapeWebsite(url);
+
+        if (scrapeResult && scrapeResult.statusCode) {
+            console.log("[INFO] Scrape completed successfully. Sending response...");
+            return res.status(scrapeResult.statusCode).json(scrapeResult);
+        } else {
+            console.warn("[WARN] Scraping completed, but no valid status code returned.");
+            return res.status(500).json({ error: "Scraping completed, but no status code returned." });
+        }
+    } catch (error) {
+        console.error("[ERROR] Scraping failed:", error.message);
+        return res.status(500).json({ error: "An error occurred during scraping." });
     }
 });
 

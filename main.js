@@ -214,10 +214,20 @@ async function checkLinkStatus(link, page, db, retryCount = 3) {
     for (let attempt = 0; attempt < retryCount; attempt++) {
         try {
             console.log(`[DEBUG] Attempt ${attempt + 1} to access ${link}`);
-            const response = await page.goto(link, { waitUntil: 'domcontentloaded', timeout: 15000 });
+            let response;
+        try {
+            response = await page.goto(link, { waitUntil: 'domcontentloaded', timeout: 15000 });
+        } catch (error) {
+            console.error(`[ERROR] Failed to access ${link}: ${error.message}`);
+        }
+
+        // Ensure response is defined before calling status()
+        const status = response && response.status ? response.status() : 500;
+        if (!response) {
+            console.warn(`[WARN] No response received for ${link}, defaulting status code to 500.`);
+        }
 
             if (response) {
-                const status = response.status();
                 const category = categorizeStatusCode(status);
                 console.log(`[INFO] Categorized ${link}: Status ${status}, Category ${category}`);
 
@@ -279,10 +289,14 @@ async function checkLinkStatus(link, page, db, retryCount = 3) {
 // Main scraping function integrated with MongoDB
 async function scrapeWebsite(url) {
     const { db, client } = await connectToDb();
-
+    let browser;
+    let response;
+    
     try {
         const startTime = Date.now();
-        const browser = await puppeteer.launch({
+        console.log(`[INFO] Launching Puppeteer for: ${url}`);
+
+        browser = await puppeteer.launch({
             headless: true,
             args: [
                 '--disable-features=site-per-process',
@@ -305,8 +319,20 @@ async function scrapeWebsite(url) {
             'If-Modified-Since': ''
         });
 
-        await page.goto(url, { waitUntil: 'networkidle2' });
+        // Try to load the page, ensuring the response is defined
+        try {
+            response = await page.goto(url, { waitUntil: 'networkidle2', timeout: 20000 });
+            console.log(`[INFO] Page loaded: ${url}`);
+        } catch (error) {
+            console.error(`[ERROR] Failed to load page: ${url} - ${error.message}`);
+            return { error: "Failed to load page", url: url, statusCode: 500 };
+        }
 
+        // Extract status code safely
+        const statusCode = response && response.status ? response.status() : 500;
+        console.log(`[INFO] HTTP Status Code: ${statusCode} for ${url}`);
+
+        // Check if the page requires login
         const loginCheck = await isLoginScreen(page);
         if (loginCheck.forcedLogin) {
             console.warn(`[WARN] Forced login detected at ${url}. Stopping scraping.`);
@@ -318,13 +344,12 @@ async function scrapeWebsite(url) {
                 timestamp: getCentralTime()
             });
 
-            await browser.close();
-            await client.close();
-            return;
+            return { error: "Login required", url: url, statusCode: 403 };
         }
 
         await handlePopups(page, db);
 
+        // Extract SEO and other page details
         const seoData = await page.evaluate(() => {
             const links = Array.from(document.querySelectorAll('a[href]'))
                 .map(a => a.href)
@@ -343,7 +368,7 @@ async function scrapeWebsite(url) {
             };
         });
 
-        const deadLinks = await checkLinksParallel(seoData.links, browser, db);
+        const deadLinks = seoData.links?.length ? await checkLinksParallel(seoData.links, browser, db) : [];
 
         // Save screenshot
         const hostname = new URL(url).hostname.replace(/\./g, '-');
@@ -351,30 +376,37 @@ async function scrapeWebsite(url) {
         await page.screenshot({ path: screenshotPath });
         const screenshotUrl = `/screenshots/screenshot-${hostname}.png`;
 
-        await browser.close();
-
         const endTime = Date.now();
 
         const resultData = {
             url: url,
+            statusCode: statusCode,
             title: seoData.title,
             metaDescription: seoData.metaDescription,
             canonical: seoData.canonical,
             robotsMeta: seoData.robotsMeta,
             headers: seoData.headers,
             totalLinks: seoData.totalLinks,
-            deadLinks: deadLinks,  // Ensure collected data is stored
+            deadLinks: deadLinks,  
             screenshotUrl: screenshotUrl,
             scrapeTimeSeconds: (endTime - startTime) / 1000,
             timestamp: getCentralTime()
         };
 
         await db.collection('scan_results').insertOne(resultData);
-        console.log('Scan result saved successfully.');
+        console.log(`[INFO] Scan result saved successfully for: ${url}`);
+        
+        return resultData;
+
     } catch (error) {
-        console.error("Error during scraping:", error.message);
+        console.error("[ERROR] Scraping failed:", error.message);
+        return { error: "Scraping failed due to an internal error.", url: url, statusCode: 500 };
     } finally {
-        await client.close();
+        if (browser) {
+            console.log("[INFO] Closing Puppeteer session...");
+            await browser.close();
+        }
+        if (client) await client.close();
     }
 }
 
