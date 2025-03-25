@@ -1,0 +1,15 @@
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"                # Root directory (adjust if your frontend is in /client or /frontend)
+    schedule:
+      interval: "daily"          # Options: "daily", "weekly", "monthly"
+    open-pull-requests-limit: 5
+    ignore:
+      - dependency-name: "puppeteer"
+        versions: ["21.x", "22.x"]  # Optional: if you've had breaking changes with newer Puppeteer versions
+    reviewers:
+      - "Christopher-Carlson"      # GitHub username of who should review PRs
+    commit-message:
+      prefix: "chore"
+      include: "scope"
