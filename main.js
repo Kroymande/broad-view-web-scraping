@@ -192,7 +192,11 @@ async function checkLinksParallel(links, browser, db) {
                 const result = await checkLinkStatus(link, pages[index], db);
                 return result;
             } finally {
-                await pages[index].close();  // Close the page after check
+                try {
+                    await pages[index].close();  // Close the page after check
+                } catch (e) {
+                    console.warn(`[WARN] Failed to close page for ${link}: ${e.message}`);
+                }
             }
         });
 
@@ -291,7 +295,7 @@ async function scrapeWebsite(url) {
     const { db, client } = await connectToDb();
     let browser;
     let response;
-    
+
     try {
         const startTime = Date.now();
         console.log(`[INFO] Launching Puppeteer for: ${url}`);
@@ -319,20 +323,22 @@ async function scrapeWebsite(url) {
             'If-Modified-Since': ''
         });
 
-        // Try to load the page, ensuring the response is defined
+        // Try to load the page
         try {
             response = await page.goto(url, { waitUntil: 'networkidle2', timeout: 20000 });
             console.log(`[INFO] Page loaded: ${url}`);
         } catch (error) {
             console.error(`[ERROR] Failed to load page: ${url} - ${error.message}`);
-            return { error: "Failed to load page", url: url, statusCode: 500 };
+            return {
+                statusCode: 500,
+                message: "Failed to load page",
+                url
+            };
         }
 
-        // Extract status code safely
         const statusCode = response && response.status ? response.status() : 500;
         console.log(`[INFO] HTTP Status Code: ${statusCode} for ${url}`);
 
-        // Check if the page requires login
         const loginCheck = await isLoginScreen(page);
         if (loginCheck.forcedLogin) {
             console.warn(`[WARN] Forced login detected at ${url}. Stopping scraping.`);
@@ -344,16 +350,19 @@ async function scrapeWebsite(url) {
                 timestamp: getCentralTime()
             });
 
-            return { error: "Login required", url: url, statusCode: 403 };
+            return {
+                statusCode: 403,
+                message: "Login required",
+                url
+            };
         }
 
         await handlePopups(page, db);
 
-        // Extract SEO and other page details
         const seoData = await page.evaluate(() => {
             const links = Array.from(document.querySelectorAll('a[href]'))
                 .map(a => a.href)
-                .filter(href => typeof href === 'string' && href.startsWith('http')) // Ensures valid links
+                .filter(href => typeof href === 'string' && href.startsWith('http'))
                 .sort((a, b) => a.localeCompare(b));
 
             return {
@@ -364,7 +373,7 @@ async function scrapeWebsite(url) {
                 headers: Array.from(document.querySelectorAll('h1, h2, h3'))
                     .map(h => h.textContent.trim().replace(/\s+/g, ' ')),
                 totalLinks: links.length,
-                links: links
+                links
             };
         });
 
@@ -379,32 +388,42 @@ async function scrapeWebsite(url) {
         const endTime = Date.now();
 
         const resultData = {
-            url: url,
-            statusCode: statusCode,
+            url,
+            statusCode,
+            message: "Scrape completed successfully",
             title: seoData.title,
             metaDescription: seoData.metaDescription,
             canonical: seoData.canonical,
             robotsMeta: seoData.robotsMeta,
             headers: seoData.headers,
             totalLinks: seoData.totalLinks,
-            deadLinks: deadLinks,  
-            screenshotUrl: screenshotUrl,
+            deadLinks,
+            screenshotUrl,
             scrapeTimeSeconds: (endTime - startTime) / 1000,
             timestamp: getCentralTime()
         };
 
         await db.collection('scan_results').insertOne(resultData);
         console.log(`[INFO] Scan result saved successfully for: ${url}`);
-        
+
         return resultData;
 
     } catch (error) {
         console.error("[ERROR] Scraping failed:", error.message);
-        return { error: "Scraping failed due to an internal error.", url: url, statusCode: 500 };
+        return {
+            statusCode: 500,
+            message: "Scraping failed due to an internal error.",
+            error: error.message,
+            url
+        };
     } finally {
         if (browser) {
-            console.log("[INFO] Closing Puppeteer session...");
-            await browser.close();
+            try {
+                console.log("[INFO] Closing Puppeteer session...");
+                await browser.close();
+            } catch (err) {
+                console.warn(`[WARN] Failed to close Puppeteer: ${err.message}`);
+            }
         }
         if (client) await client.close();
     }
