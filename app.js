@@ -55,7 +55,7 @@ app.get('/api/scan-results', async (req, res) => {
 
 // API: Get single scan result by URL
 app.get('/api/scan-results/:url', async (req, res) => {
-    const url = req.params.url;
+    const url = decodeURIComponent(req.params.url); // Decode the URL to handle special characters
     try {
         const { db, client } = await connectToDb();
         const result = await db.collection('scan_results').findOne({ url });
