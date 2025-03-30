@@ -5,9 +5,6 @@ updates:
     schedule:
       interval: "daily"          # Options: "daily", "weekly", "monthly"
     open-pull-requests-limit: 5
-    ignore:
-      - dependency-name: "puppeteer"
-        versions: ["21.x", "22.x"]  # Optional: if you've had breaking changes with newer Puppeteer versions
     reviewers:
       - "Kroymande"      # GitHub username of who should review PRs
     commit-message:

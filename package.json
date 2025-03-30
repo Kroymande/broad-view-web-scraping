@@ -1,6 +1,6 @@
 {
   "name": "broad-view-web-scraping",
-  "version": "1.0.0",
+  "version": "5.1.0",
   "description": "Web scraping module for the Broad View AI-Assisted Website Service Analytics project.",
   "main": "main.js",
   "scripts": {
