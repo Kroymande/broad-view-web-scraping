@@ -28,7 +28,7 @@
     "jsonwebtoken": "^9.0.2",
     "mongodb": "^6.15.0",
     "morgan": "^1.10.0",
-    "puppeteer": "^24.5.0"
+    "puppeteer": "^24.6.0"
   },
   "devDependencies": {
     "@ljharb/tsconfig": "^0.3.2",
