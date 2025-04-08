@@ -20,11 +20,11 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/screenshots', express.static(path.join(__dirname, 'public/screenshots')));
 
 // Modular routes
-app.use('/api', require ('./routes/scrape'));
-app.use('/api', require('./routes/scans'));
-app.use('/api', require('./routes/users'));
-app.use('/api', require('./routes/config'));
-app.use('/api', require('./routes/health'));
+app.use('/api/scrape', require('./routes/scrape'));
+app.use('/api/scans', require('./routes/scans'));
+app.use('/api/users', require('./routes/users'));
+app.use('/api/config', require('./routes/config'));
+app.use('/api/health', require('./routes/health'));
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Server is running on http://localhost:${PORT}`));

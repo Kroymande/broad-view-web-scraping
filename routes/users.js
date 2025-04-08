@@ -11,13 +11,14 @@ router.post('/register', async (req, res) => {
   const { username, password } = req.body;
   try {
     const { db } = await connectToDb();
-    
-    if (existing) {
+
+    const existingUser = await db.collection('users').findOne({ email: username });
+    if (existingUser) {
       return res.status(409).json({ error: 'Username already exists' });
     }
 
-    const hashed = await bcrypt.hash(password, 10);
-    await db.collection('users').insertOne({ email: username, password: hashed });
+    const hashedPassword = await bcrypt.hash(password, 10);
+    await db.collection('users').insertOne({ email: username, password: hashedPassword });
     res.status(201).json({ message: 'User registered' });
   } catch (err) {
     console.error('Registration error:', err);
