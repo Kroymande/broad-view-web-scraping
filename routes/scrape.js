@@ -1,10 +1,11 @@
 const express = require('express');
 const router = express.Router();
+const verifyToken = require('../middleware/authMiddleware');
 const scrapeWebsite = require('../scraper/scrapeWebsite');
 const { connectToDb } = require('../db/dbConnect');
 const { logErrorToDb } = require('../db/logger');
 
-router.post('/scrape', async (req, res) => {
+router.post('/scrape', verifyToken, async (req, res) => {
     const { url } = req.body;
     console.log('[SCRAPE] Incoming scrape request for:', url);
 

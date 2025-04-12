@@ -1,10 +1,10 @@
 const express = require('express');
 const router = express.Router();
+const verifyToken = require('../middleware/authMiddleware');
 const { connectToDb } = require('../db/dbConnect');
-const { scrapeWebsite } = require('../scraper/scrapeWebsite');
 
 // GET all scan results
-router.get('/scan-results', async (req, res) => {
+router.get('/scan-results', verifyToken, async (res) => {
     try {
         const { db } = await connectToDb();
         const results = await db.collection('scan_results').find().toArray();

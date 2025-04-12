@@ -1,12 +1,10 @@
+require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
-const dotenv = require('dotenv');
 const path = require('path');
 const scrapeRoutes = require('./routes/scrape');
-
-dotenv.config();
 
 const app = express();
 app.use(cors());
