@@ -4,7 +4,7 @@ const verifyToken = require('../middleware/authMiddleware');
 const { connectToDb } = require('../db/dbConnect');
 
 // GET all scan results
-router.get('/scan-results', verifyToken, async (res) => {
+router.get('/scan-results', verifyToken, async (req, res) => {
     try {
         const { db } = await connectToDb();
         const results = await db.collection('scan_results').find().toArray();
