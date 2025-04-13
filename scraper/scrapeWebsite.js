@@ -1,10 +1,9 @@
 const puppeteer = require('puppeteer');
 const path = require('path');
 const fs = require('fs');
-const { getCentralTime, categorizeStatusCode, determineBatchSize } = require('./utils');
+const { getCentralTime } = require('./utils');
 const { saveScreenshot } = require('./screenshotSaver');
 const { handlePopups } = require('./popupHandler');
-const isLoginScreen = require('./loginDetector');
 const { checkLinksParallel } = require('./linkChecker');
 const { connectToDb } = require('../db/dbConnect');
 const { logErrorToDb, logWarningToDb } = require('../db/logger');
@@ -39,6 +38,13 @@ async function scrapeWebsite(url) {
     console.log('[SCRAPER] Launching browser...');
     browser = await puppeteer.launch({ headless: 'new' });
     const page = await browser.newPage();
+    await page.setUserAgent(
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    );
+    await page.setExtraHTTPHeaders({
+      "Accept-Language": "en-US,en;q=0.9",
+    });
+    
 
     console.log(`[SCRAPER] Navigating to URL: ${url}`);
     const response = await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
@@ -114,6 +120,17 @@ async function scrapeWebsite(url) {
     console.log('[SCRAPER] Checking links...');
     const linkResults = await checkLinksParallel(links, browser, db);
     result.deadLinks = linkResults?.filter(l => l.category !== 'valid') || [];
+
+    // Build status code summary for visualization
+    const statusSummary = {};
+    linkResults.forEach(link => {
+      const code = link.status?.toString() || 'unknown';
+      if (!statusSummary[code]) statusSummary[code] = 0;
+      statusSummary[code]++;
+    });
+
+    result.statusCodes = statusSummary;
+
     console.log(`[SCRAPER] Dead links found: ${result.deadLinks.length}`);
 
     const html = await page.content();
@@ -122,6 +139,17 @@ async function scrapeWebsite(url) {
 
     result.scrapeTimeSeconds = ((Date.now() - start) / 1000).toFixed(2);
     console.log(`[SCRAPER] Scrape completed in ${result.scrapeTimeSeconds} seconds.`);
+
+    // Detect Cloudflare/CAPTCHA or bot protection page
+    if (result.status === 403 || result.title.toLowerCase().includes("just a moment")) {
+      console.warn('[SCRAPER] Blocked by anti-bot protection (e.g., Cloudflare)');
+      result.blockedByProtection = true;
+
+      // Log it for analytics/debugging
+      await logWarningToDb(db, 'Blocked by bot protection (Cloudflare)', url);
+
+      return result; // Exit early without saving to DB
+    }
 
     console.log('[SCRAPER] Validating result...');
     const isResultValid = (

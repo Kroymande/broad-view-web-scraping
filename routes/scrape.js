@@ -16,6 +16,11 @@ router.post('/scrape', verifyToken, async (req, res) => {
 
     try {
         const result = await scrapeWebsite(url);
+
+        if (result.blockedByProtection) {
+            return res.status(403).json({ error: 'Site is protected by anti-bot services like Cloudflare. Scan could not be completed.' });
+        }      
+            
         return res.status(result.status).json(result);
     } catch (err) {
         console.error('[SCRAPE] Critical failure:', err.message);

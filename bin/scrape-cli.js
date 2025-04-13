@@ -1,6 +1,3 @@
-#!/usr/bin/env node
-
-// bin/scrape-cli.js
 const scrapeWebsite = require('../scraper/scrapeWebsite');
 
 const url = process.argv[2];
