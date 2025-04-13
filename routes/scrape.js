@@ -5,11 +5,22 @@ const scrapeWebsite = require('../scraper/scrapeWebsite');
 const { connectToDb } = require('../db/dbConnect');
 const { logErrorToDb } = require('../db/logger');
 
+const validator = require('validator');
+
 router.post('/scrape', verifyToken, async (req, res) => {
-    const { url } = req.body;
+    const url = req.body.url?.trim();
     console.log('[SCRAPE] Incoming scrape request for:', url);
 
-    if (!url || typeof url !== 'string' || !/^https?:\/\//.test(url)) {
+    const isValidUrl = validator.isURL(url, {
+        protocols: ['http', 'https'],
+        require_protocol: true,
+        require_host: true,
+        require_tld: true,
+        allow_underscores: true,
+        allow_trailing_dot: true,
+    });
+
+    if (!url || typeof url !== 'string' || !isValidUrl) {
         console.warn('[SCRAPE] Invalid URL input.');
         return res.status(400).json({ error: 'Invalid or missing URL.' });
     }

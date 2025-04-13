@@ -2,7 +2,8 @@ const jwt = require('jsonwebtoken');
 const JWT_SECRET = process.env.JWT_SECRET || 'your_fallback_secret';
 
 function verifyToken(req, res, next) {
-  const token = req.headers['authorization'];
+  const bearerToken = req.headers['authorization'];
+  const token = bearerToken?.startsWith("Bearer ") ? bearerToken.split(" ")[1] : bearerToken;
 
   if (!token) {
     return res.status(403).json({ error: 'No token provided' });
@@ -20,4 +21,4 @@ function verifyToken(req, res, next) {
 }
 
 module.exports = verifyToken; // Export the middleware function
-//     res.status(200).json({ token });
+// res.status(200).json({ token });
