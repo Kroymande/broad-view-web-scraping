@@ -11,8 +11,8 @@
     "type": "git",
     "url": "git+https://github.com/Kroymande/broad-view-web-scraping.git"
   },
-  "keywords": [],
-  "author": "",
+  "keywords": ["AI", "web scraping", "analytics", "backend", "website service", "AI-assisted", "data extraction", "automation"],
+  "author": "Christopher Robert Carlson <Kroymande>",
   "license": "ISC",
   "bugs": {
     "url": "https://github.com/Kroymande/broad-view-web-scraping/issues"
