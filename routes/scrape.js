@@ -9,6 +9,7 @@ const validator = require('validator');
 
 router.post('/scrape', verifyToken, async (req, res) => {
     const url = req.body.url?.trim();
+    const testRun = req.body.testRun || false; // Default to false if not provided
     console.log('[SCRAPE] Incoming scrape request for:', url);
 
     const isValidUrl = validator.isURL(url, {
@@ -26,7 +27,7 @@ router.post('/scrape', verifyToken, async (req, res) => {
     }
 
     try {
-        const result = await scrapeWebsite(url);
+        const result = await scrapeWebsite(url, testRun);
 
         if (result.blockedByProtection) {
             return res.status(403).json({ error: 'Site is protected by anti-bot services like Cloudflare. Scan could not be completed.' });

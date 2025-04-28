@@ -11,7 +11,7 @@ const { logErrorToDb, logWarningToDb } = require('../db/logger');
 const screenshotDir = path.join(__dirname, '../public/screenshots');
 if (!fs.existsSync(screenshotDir)) fs.mkdirSync(screenshotDir, { recursive: true });
 
-async function scrapeWebsite(url) {
+async function scrapeWebsite(url, isTestRun = false) {
   console.log(`[SCRAPER] Starting scrape for URL: ${url}`);
   const { db, client } = await connectToDb();
   let browser;
@@ -102,7 +102,8 @@ async function scrapeWebsite(url) {
 
     console.log('[SCRAPER] Taking screenshot...');
     const hostname = new URL(url).hostname.replace(/\./g, '-');
-    const screenshotData = await saveScreenshot(page, hostname);
+    const prefix = isTestRun ? 'test-screenshot-' : 'screenshot-';
+    const screenshotData = await saveScreenshot(page, prefix + hostname);
     result.screenshotUrl = screenshotData.screenshotUrl;
     result.screenshotBase64 = screenshotData.screenshotBase64;
     console.log(`[SCRAPER] Screenshot saved: ${result.screenshotUrl}`);

@@ -1,6 +1,8 @@
 const axios = require('axios');
 const chai = require('chai');
 const expect = chai.expect;
+const fs = require('fs');
+const path = require('path');
 
 const BASE_URL = 'http://localhost:3000/api';
 const testEmail = 'testuser@example.com';
@@ -35,7 +37,8 @@ describe('Scraping API Tests', function () {
 
   it('should successfully scrape a valid website', async function () {
     const scrapeResponse = await axios.post(`${BASE_URL}/scrape/scrape`, {
-      url: 'https://www.mongodb.com'
+      url: 'https://www.mongodb.com',
+      testRun: true
     }, {
       headers: { Authorization: `Bearer ${token}` }
     });
@@ -77,16 +80,15 @@ describe('Scraping API Tests', function () {
     console.log('[CLEANUP] Starting cleanup...');
   
     try {
-      // Delete the test user
+      // Delete test user
       await axios.delete(`${BASE_URL}/users/delete/${testEmail}`);
       console.log('[CLEANUP] Test user deleted.');
-  
     } catch (err) {
       console.warn(`[CLEANUP] Could not delete test user: ${err.response?.data?.error || err.message}`);
     }
   
     try {
-      // Delete the test scraped result
+      // Delete test scraped result from database
       const { connectToDb } = require('../db/dbConnect');
       const { db, client } = await connectToDb();
   
@@ -100,6 +102,20 @@ describe('Scraping API Tests', function () {
       console.warn(`[CLEANUP] Could not delete scraped data: ${err.message}`);
     }
   
+    try {
+      // Delete any related screenshot files
+      const screenshotsDir = path.join(__dirname, '..', 'public', 'screenshots');
+      const files = fs.readdirSync(screenshotsDir);
+  
+      const testScreenshots = files.filter(file => file.startsWith('test-screenshot-'));
+      for (const file of testScreenshots) {
+        fs.unlinkSync(path.join(screenshotsDir, file));
+        console.log(`[CLEANUP] Deleted test screenshot: ${file}`);
+      }
+    } catch (err) {
+      console.warn(`[CLEANUP] Could not delete screenshots: ${err.message}`);
+    }
+  
     console.log('[CLEANUP] Cleanup finished.');
-  });  
+  }); 
 });
