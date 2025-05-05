@@ -6,34 +6,6 @@ const router = express.Router();
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your_jwt_secret_key';
 
-if (process.env.NODE_ENV === 'test') {
-  router.delete('/delete/:email', async (req, res) => {
-    const emailToDelete = req.params.email.trim().toLowerCase();
-    console.log(`[DELETE] Received request to delete: ${emailToDelete}`);
-  
-    if (!emailToDelete.endsWith('@example.com')) {
-      console.warn(`[DELETE] Rejected deletion for unauthorized domain: ${emailToDelete}`);
-      return res.status(403).json({ error: 'Unauthorized deletion attempt' });
-    }
-  
-    try {
-      const { db } = await connectToDb();
-      const result = await db.collection('users').deleteOne({ email: emailToDelete });
-  
-      console.log(`[DELETE] Attempted deletion. Deleted count: ${result.deletedCount}`);
-  
-      if (result.deletedCount === 0) {
-        return res.status(404).json({ error: 'User not found' });
-      }
-  
-      res.json({ message: `User ${emailToDelete} deleted` });
-    } catch (err) {
-      console.error('[DELETE USER] Failed:', err.message);
-      res.status(500).json({ error: 'Failed to delete user' });
-    }
-  });  
-}
-
 // Register
 router.post('/register', async (req, res) => {
   const { email, password } = req.body;

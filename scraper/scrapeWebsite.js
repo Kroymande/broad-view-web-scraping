@@ -38,16 +38,55 @@ async function scrapeWebsite(url, isTestRun = false) {
     console.log('[SCRAPER] Launching browser...');
     browser = await puppeteer.launch({ headless: 'new' });
     const page = await browser.newPage();
+
+    const maxAttempts = 3;
+    let attempt = 0;
+    let response = null;
+
+    while (attempt < maxAttempts) {
+      try {
+        console.log(`[SCRAPER] Attempt ${attempt + 1} to navigate to URL: ${url}`);
+        response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+        result.status = response?.status?.() || 500;
+        break; // Success!
+      } catch (err) {
+        console.warn(`[SCRAPER] Attempt ${attempt + 1} failed: ${err.message}`);
+        attempt++;
+        if (attempt === maxAttempts) {
+          result.status = 500;
+          result.error = `Failed to load page after ${maxAttempts} attempts: ${err.message}`;
+          console.error(`[SCRAPER] Max retries reached. Giving up on ${url}`);
+          await logErrorToDb(db, result.error, url, attempt);
+          return result; // Exit gracefully, no further processing
+        }        
+        await new Promise(r => setTimeout(r, 2000)); // delay before retry
+      }
+    }
+
     await page.setUserAgent(
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     );
+    
     await page.setExtraHTTPHeaders({
-      "Accept-Language": "en-US,en;q=0.9",
+      "Accept-Language": "en-US,en;q=0.9"
     });
     
+    page.on('framenavigated', (frame) => {
+      if (frame === page.mainFrame()) {
+        console.warn('[SCRAPER] Main frame navigated again to:', frame.url());
+      }
+    });
 
-    console.log(`[SCRAPER] Navigating to URL: ${url}`);
-    const response = await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
+    page.on('requestfailed', request => {
+      const failure = request.failure();
+      console.warn(`[SCRAPER] Resource failed: ${request.url()} (${failure?.errorText || 'unknown error'})`);
+    });
+
+    page.on('console', msg => {
+      console.log(`[SCRAPER CONSOLE] ${msg.type().toUpperCase()}: ${msg.text()}`);
+    });
+    
+    console.log(`[SCRAPER] Navigating to URL: ${url}`);   
     result.status = response?.status?.() || 500;
     console.log(`[SCRAPER] Page status: ${result.status}`);
 
@@ -58,10 +97,15 @@ async function scrapeWebsite(url, isTestRun = false) {
     console.log('[SCRAPER] Checking for robots meta tag...');
     const robotsMetaExists = await page.$("meta[name='robots']");
     if (robotsMetaExists) {
-      const content = await page.evaluate(() => {
-        const meta = document.querySelector("meta[name='robots']");
-        return meta ? meta.content : null;
-      });
+      let content = '';
+      try {
+        content = await page.evaluate(() => {
+          const meta = document.querySelector("meta[name='robots']");
+          return meta ? meta.content : null;
+        });
+      } catch (err) {
+        console.warn('[SCRAPER] Failed to read robots meta:', err.message);
+      }
       console.log(`[SCRAPER] Robots meta tag found: ${content}`);
       result.robotsMeta = content;
     } else {
@@ -71,22 +115,27 @@ async function scrapeWebsite(url, isTestRun = false) {
 
     console.log('[SCRAPER] Handling popups...');
     await handlePopups(page, db);
+    if (page.isClosed()) throw new Error('Page closed unexpectedly after popup handling');
 
     console.log('[SCRAPER] Scrolling through the page...');
-    await page.evaluate(async () => {
-      await new Promise((resolve) => {
-        let totalHeight = 0;
-        const distance = 200;
-        const timer = setInterval(() => {
-          window.scrollBy(0, distance);
-          totalHeight += distance;
-          if (totalHeight >= document.body.scrollHeight) {
-            clearInterval(timer);
-            resolve();
-          }
-        }, 100);
+    try {
+      await page.evaluate(async () => {
+        await new Promise((resolve) => {
+          let totalHeight = 0;
+          const distance = 200;
+          const timer = setInterval(() => {
+            window.scrollBy(0, distance);
+            totalHeight += distance;
+            if (totalHeight >= document.body.scrollHeight) {
+              clearInterval(timer);
+              resolve();
+            }
+          }, 100);
+        });
       });
-    });
+    } catch (err) {
+      console.warn('[SCRAPER] Scrolling failed:', err.message);
+    }    
 
     console.log('[SCRAPER] Extracting metadata...');
     result.title = await page.title();
@@ -134,9 +183,13 @@ async function scrapeWebsite(url, isTestRun = false) {
 
     console.log(`[SCRAPER] Dead links found: ${result.deadLinks.length}`);
 
-    const html = await page.content();
-    fs.writeFileSync('debug.html', html);
-    console.log('[SCRAPER] Saved DOM content to debug.html');
+    try {
+      const html = await page.content();
+      fs.writeFileSync('debug.html', html);
+      console.log('[SCRAPER] Saved DOM content to debug.html');
+    } catch (err) {
+      console.warn('[SCRAPER] Could not save DOM content:', err.message);
+    }    
 
     result.scrapeTimeSeconds = ((Date.now() - start) / 1000).toFixed(2);
     console.log(`[SCRAPER] Scrape completed in ${result.scrapeTimeSeconds} seconds.`);
