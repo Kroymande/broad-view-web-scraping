@@ -14,31 +14,33 @@ Broad View is a scalable and secure web application designed to automate the mon
 - **User-Friendly Interface**: Provides real-time analytics and visualizations through a responsive web-based dashboard.
 - **Customizable Scanning**: Allows users to configure scan frequency, exclude specific URLs, and set alert thresholds.
 - **Secure and Scalable Architecture**: Utilizes a self-expanding MongoDB database with robust authentication and indexing.
+- **Cloud-Hosted MongoDB**: Self-expanding database for scan history and logs.
 
 ---
 
 ## Tech Stack
 
-- **Frontend**: React.js
-- **Backend**: Node.js with Express.js
-- **Database**: MongoDB (Atlas Cloud)
-- **Web Scraping**: Puppeteer
-- **Authentication**: JWT (JSON Web Tokens)
-- **Testing**: Mocha and Chai
-- **Other Tools**: MongoDB Compass, Postman, ESLint
+| Component   | Technology                      |
+|------------|----------------------------------|
+| Frontend   | React.js, Axios, Chart.js        |
+| Backend    | Node.js, Express.js, Puppeteer   |
+| Database   | MongoDB Atlas (Cloud NoSQL)      |
+| Auth       | JSON Web Tokens (JWT)            |
+| Testing    | Mocha, Chai                      |
+| Tools      | Postman, MongoDB Compass, ESLint |
 
 ---
 
 ## Backend Installation and Setup
 
-### 1. Clone the Repository
+### 1. Clone the Backend Repository
 
 ```bash
 git clone https://github.com/Kroymande/broad-view-web-scraping.git
 cd broad-view-web-scraping
 ```
 
-### 2. Install Dependencies
+### 2. Install Backend Dependencies
 
 ```bash
 npm install
@@ -65,6 +67,33 @@ The server will be running at:
 
 ```arduino
 http://localhost:3000
+```
+
+## Frontend Installation and Setup
+
+### 1. Clone the Frontend Repository
+
+```bash
+git clone https://github.com/nickolas-shtayn/broad-view-web-scraping-frontend.git
+cd broad-view-web-scraping-frontend
+```
+
+### 2. Install Frontend Dependencies
+
+```bash
+npm install
+```
+
+### 3. Start the Frontend
+
+```bash
+npm run dev
+```
+
+The website will be running at:
+
+```arduino
+http://localhost:5173
 ```
 
 ## Running Backend Tests
