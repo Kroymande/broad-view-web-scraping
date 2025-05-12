@@ -20,7 +20,7 @@
   "homepage": "https://github.com/Kroymande/broad-view-web-scraping#readme",
   "dependencies": {
     "axios": "^1.9.0",
-    "bcrypt": "^5.1.1",
+    "bcrypt": "^6.0.0",
     "chai": "^5.2.0",
     "cors": "^2.8.5",
     "dotenv": "^16.5.0",
