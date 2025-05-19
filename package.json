@@ -34,6 +34,6 @@
   },
   "devDependencies": {
     "@ljharb/tsconfig": "^0.3.2",
-    "mocha": "^11.2.2"
+    "mocha": "^11.4.0"
   }
 }
