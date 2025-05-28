@@ -30,7 +30,7 @@
     "mongodb": "^6.16.0",
     "morgan": "^1.10.0",
     "puppeteer": "^24.8.0",
-    "validator": "^13.15.0"
+    "validator": "^13.15.15"
   },
   "devDependencies": {
     "@ljharb/tsconfig": "^0.3.2",
