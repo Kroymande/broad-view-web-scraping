@@ -1,5 +1,10 @@
 # Broad View - AI-Assisted Website Service Analytics
 
+---
+**Disclaimer:** This repository is a portfolio snapshot of my University Senior Project.  
+The production-ready SaaS codebase continues in a private repository.
+---
+
 ## Project Overview
 
 Broad View is a scalable and secure web application designed to automate the monitoring of website integrity and performance. The application focuses on detecting dead links, collecting website metadata, and providing actionable insights for SEO optimization. Targeted at IT administrators and digital marketers, this tool streamlines website maintenance, reduces manual effort, and enhances the overall health of online assets.
